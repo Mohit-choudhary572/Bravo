@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidCoordinates(data) {
+      return data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0 &&
+             data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0;
+    }
+
+    // Farms collection
+    match /farms/{farmId} {
+      // Allow read if user is authenticated or document is marked public for cooperative farm managers
+      allow read: if isAuthenticated();
+
+      // Only authenticated users can create farms; coordinates must be validated if present
+      allow create: if isAuthenticated() && 
+                    (!('latitude' in request.resource.data) || isValidCoordinates(request.resource.data));
+
+      // Farm updates: coordinate updates must be valid numbers within range
+      allow update: if isAuthenticated() &&
+                    (!('latitude' in request.resource.data) || isValidCoordinates(request.resource.data));
+
+      allow delete: if isAuthenticated() && 
+                    (resource.data.ownerUid == request.auth.uid || !('ownerUid' in resource.data));
+
+      // Tasks and operations subcollection
+      match /tasks/{taskId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+  }
+}
